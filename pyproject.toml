@@ -1,0 +1,20 @@
+[project]
+name = "specview"
+version = "0.1.0"
+description = "Matplotlib-based GUI for viewing hyperspectral imagery."
+authors = [
+    {name = "Z.M. Vig",email = "zvig@umd.edu"}
+]
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "matplotlib (>=3.10.5,<4.0.0)",
+    "numpy (>=2.3.2,<3.0.0)",
+    "tk (>=0.1.0,<0.2.0)",
+    "h5py (>=3.14.0,<4.0.0)"
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
