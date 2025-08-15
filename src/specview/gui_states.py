@@ -5,9 +5,27 @@ from dataclasses import dataclass
 # Dependencies
 from matplotlib.axes import Axes
 
+# Relative Imports
+from .spectrum_plot_objects import PlottedSpectrum
+
 
 @dataclass
 class PanningState:
     is_panning: bool = False
     pan_start: Optional[Tuple[float, float]] = None
     pan_ax: Optional[Axes] = None
+
+
+@dataclass
+class ImagePlotState:
+    panning: PanningState = PanningState()
+    collect_spectra: bool = False
+
+
+@dataclass
+class SpectrumPlotState:
+    currently_plotted: PlottedSpectrum = PlottedSpectrum.null()
+    cached_plots: list[PlottedSpectrum] = []
+    plot_activate: bool = False
+    single_spec_count: int = 0
+    mean_spec_count: int = 0

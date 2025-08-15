@@ -3,11 +3,8 @@ from .gui_states import PanningState
 
 
 def apply_panning(
-    event,
-    panning_state: PanningState,
-    sensitivity: float = 0.2
+    event, panning_state: PanningState, sensitivity: float = 0.2
 ):
-    sensitivity = 0.2
     if not panning_state.is_panning:
         return
     if panning_state.pan_start is None or panning_state.pan_ax is None:

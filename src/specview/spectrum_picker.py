@@ -1,24 +1,181 @@
 # Standard Libraries
+from typing import Optional
 
 # Dependencies
 import numpy as np
+import numpy.typing as npt
 import matplotlib.pyplot as plt
-from matplotlib.widgets import RangeSlider
+from matplotlib.widgets import RangeSlider, Button
+from matplotlib.figure import Figure
+from matplotlib.axes import Axes
+from tkinter.filedialog import asksaveasfilename
+import h5py as h5  # type: ignore
 
 # Relative Imports
 from .utils import set_image_axis
 from .scrolling_actions import apply_zoom
 from .motion_actions import apply_panning
-from .gui_states import PanningState
+from .gui_states import PanningState, SpectrumPlotState
+from .spectrum_plot_objects import PlottedMeanSpectrum, PlottedSingleSectrum
 
 
-class SpectralPicker:
+class PlotNotInitializedError(Exception):
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+
+
+class SpectrumDislpay:
+    def __init__(
+        self,
+        wvl: npt.NDArray[np.floating],
+        spectral_cube: npt.NDArray[np.floating],
+    ):
+        self.wvl = wvl
+        self.data = spectral_cube
+        self.fig: Optional[Figure] = None
+        self.plot_ax: Optional[Axes] = None
+        self._plot_state = SpectrumPlotState
+
+    def show(self):
+        self.fig = plt.figure(tight_layout=True)
+        gridspec = self.fig.add_gridspec(nrows=9, ncols=12)
+        self.plot_ax = self.fig.add_subplot(gridspec[0:8, 0:10])
+        self.button_ax = self.fig.add_subplot(gridspec[8:9, 1:5])
+        self.save_button_ax = self.fig.add_subplot(gridspec[8:9, 5:9])
+        self.button = Button(self.button_ax, "Clear Spectra")
+        self.save_button = Button(self.save_button_ax, "Save Plot Data")
+        self.button.on_clicked(self.clear_spectra)
+        self.save_button.on_clicked(self.save_current_spectra)
+
+        plt.show(block=False)
+
+    def clear_spectra(self, event):
+        [i.plot_obj.remove() for i in self._plot_state.cached_plots]
+        self._plot_state.cached_plots = []
+        self._plot_state.single_spec_count = 0
+        self._plot_state.mean_spec_count = 0
+
+        if self.fig is not None:
+            self.fig.canvas.draw_idle()
+        else:
+            raise PlotNotInitializedError("Figure was not initialized.")
+
+    def plot(self, x: int, y: int):
+        self._plot_state.single_spec_count += 1
+        dat = self.data[y, x, :]
+
+        if self.plot_ax is not None:
+            (sp,) = self.plot_ax.plot(self.wvl, dat)
+        else:
+            raise PlotNotInitializedError("Axis was not initialized.")
+
+        print(
+            f"Plotted from X: {x}, Y: {y} ("
+            f"{self._plot_state.single_spec_count} in total)."
+        )
+
+        self._plot_state.cached_plots.append(
+            self._plot_state.currently_plotted
+        )
+        self._plot_state.currently_plotted = PlottedSingleSectrum(
+            name=f"SPECTRUM_{self._plot_state.single_spec_count:.02d}",
+            plot_obj=sp,
+            wvl=self.wvl,
+            data=dat,
+            pixel_coord=(x, y),
+        )
+
+        if self.fig is not None:
+            self.fig.canvas.draw_idle()
+        else:
+            raise PlotNotInitializedError("Figure was not initialized.")
+
+    def plot_average(
+        self,
+        x_vals: npt.NDArray[np.int16],
+        y_vals: npt.NDArray[np.int16],
+        include_error_bars: bool = False,
+    ):
+        self._plot_state.mean_spec_count += 1
+        all_spectra = self.data[x_vals, y_vals, :]
+        nspec = all_spectra.shape[0]
+        mean_spec = np.mean(all_spectra, axis=0)
+        err_spec = np.std(all_spectra, axis=0, ddof=1)
+        if self.plot_ax is not None:
+            if include_error_bars:
+                (sp,) = self.plot_ax.errorbar(self.wvl, mean_spec, err_spec)
+            else:
+                (sp,) = self.plot_ax.plot(self.wvl, mean_spec)
+        else:
+            raise PlotNotInitializedError("Axis was not initialized.")
+
+        print(
+            f"Averaged {nspec} spectra. ({self._plot_state.mean_spec_count}"
+            "mean spectra in total.)"
+        )
+
+        save_pixel_coords = np.hstack((y_vals, x_vals))
+
+        self._plot_state.cached_plots.append(
+            self._plot_state.currently_plotted
+        )
+        self._plot_state.currently_plotted = PlottedMeanSpectrum(
+            name=f"AREA_{self._plot_state.mean_spec_count:02d}",
+            plot_obj=sp,
+            wvl=self.wvl,
+            data=mean_spec,
+            data_err=err_spec,
+            pixel_coords=save_pixel_coords,
+            total=nspec,
+        )
+
+        if self.fig is not None:
+            self.fig.canvas.draw_idle()
+        else:
+            raise PlotNotInitializedError("Figure was not initialized.")
+
+    def save_current_spectra(self, event):
+        self._plot_state.cached_plots.append(
+            self._plot_state.currently_plotted
+        )
+        file = asksaveasfilename(
+            filetypes=[("HDF5", "*.hdf5")],
+            defaultextension="*.hdf5",
+            initialdir="./",
+        )
+
+        with h5.File(file, "w") as f:
+            for obj in self._plot_state.cached_plots:
+                f[obj.name] = obj.data
+                if isinstance(obj, PlottedMeanSpectrum):
+                    f[f"{obj.name}_error"] = obj.data_err
+                    f[f"{obj.name}_coords"] = obj.pixel_coords
+                elif isinstance(obj, PlottedSingleSectrum):
+                    f.attrs["coordinate"] = obj.pixel_coord
+            f.attrs["wvls"] = self.wvl
+
+    def close(self):
+        plt.close(self.fig)
+
+    def toggle(self):
+        if self.is_open():
+            self.close()
+        else:
+            self.show()
+
+    def is_open(self):
+        return self.fig is not None and plt.fignum_exists(self.fig.number)
+
+
+class ImageDisplay:
     def __init__(
         self,
         display_image: np.ndarray,
-        **mpl_kwargs
+        specdisplay: SpectrumDislpay,
+        **mpl_kwargs,
     ) -> None:
         self.display = display_image
+        self.specdisplay = specdisplay
 
         self.display_fig = plt.figure(figsize=(8, 8))
         gpsc = self.display_fig.add_gridspec(nrows=12, ncols=12)
@@ -26,20 +183,20 @@ class SpectralPicker:
         self.slider_ax = self.display_fig.add_subplot(gpsc[11:12, 0:12])
 
         box = self.slider_ax.get_position()
-        self.slider_ax.set_position((
-            box.x0 + 0.15 * box.width,  # x (move right slightly)
-            box.y0 + 0.15 * box.height,  # y (move up slightly)
-            0.7 * box.width,  # width
-            0.2 * box.height  # height (shrink)
-        ))
+        self.slider_ax.set_position(
+            (
+                box.x0 + 0.15 * box.width,  # x (move right slightly)
+                box.y0 + 0.15 * box.height,  # y (move up slightly)
+                0.7 * box.width,  # width
+                0.2 * box.height,  # height (shrink)
+            )
+        )
         self.slider_ax.set_facecolor("none")  # Make background transparent
 
         self.display_ax.set_box_aspect(1)
         set_image_axis(self.display_ax)
 
-        default_mpl = {
-            'cmap': "Grays_r"
-        }
+        default_mpl = {"cmap": "Grays_r"}
         mpl_kwargs = {**default_mpl, **mpl_kwargs}
 
         self.image_obj = self.display_ax.imshow(self.display, **mpl_kwargs)
@@ -51,8 +208,8 @@ class SpectralPicker:
             valmax=finite_img.max(),
             valinit=(
                 float(np.quantile(finite_img, 0.05)),
-                float(np.quantile(finite_img, 0.95))
-            )
+                float(np.quantile(finite_img, 0.95)),
+            ),
         )
         self.targ_slider.on_changed(self.update)
 
@@ -76,7 +233,7 @@ class SpectralPicker:
         apply_zoom(event, self.display, self.display_ax)
 
     def on_button_press(self, event):
-        if event.button == 2 and event.inaxes in self.display_ax:
+        if (event.button == 2) and (event.inaxes == self.display_ax):
             self._state.is_panning = True
             self._state.pan_start = (event.x, event.y)
             self._state.pan_ax = event.inaxes
@@ -88,5 +245,21 @@ class SpectralPicker:
             self._state.pan_ax = None
 
     def on_motion(self, event):
-        apply_panning(event, self._state)
+        apply_panning(event, self._state, sensitivity=0.4)
         self.display_fig.canvas.draw_idle()
+
+
+class SpectrumPicker:
+    def __init__(
+        self,
+        display_image: npt.NDArray[np.floating],
+        spectral_cube: npt.NDArray[np.floating],
+        wvl: npt.NDArray[np.floating],
+    ):
+        self.img = display_image
+        self.cube = spectral_cube
+        self.wvl = wvl
+
+        self.specdisplay = SpectrumDislpay(self.wvl, self.cube)
+
+        ImageDisplay(self.img, self.specdisplay)
