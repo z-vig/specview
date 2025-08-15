@@ -5,9 +5,11 @@ from typing import Optional
 import numpy as np
 import numpy.typing as npt
 import matplotlib.pyplot as plt
-from matplotlib.widgets import RangeSlider, Button
+from matplotlib.widgets import RangeSlider, Button, LassoSelector
 from matplotlib.figure import Figure
 from matplotlib.axes import Axes
+from matplotlib.path import Path
+from matplotlib.patches import Rectangle
 from tkinter.filedialog import asksaveasfilename
 import h5py as h5  # type: ignore
 
@@ -15,7 +17,7 @@ import h5py as h5  # type: ignore
 from .utils import set_image_axis
 from .scrolling_actions import apply_zoom
 from .motion_actions import apply_panning
-from .gui_states import PanningState, SpectrumPlotState
+from .gui_states import ImagePlotState, SpectrumPlotState
 from .spectrum_plot_objects import PlottedMeanSpectrum, PlottedSingleSectrum
 
 
@@ -34,7 +36,7 @@ class SpectrumDislpay:
         self.data = spectral_cube
         self.fig: Optional[Figure] = None
         self.plot_ax: Optional[Axes] = None
-        self._plot_state = SpectrumPlotState
+        self._plot_state = SpectrumPlotState()
 
     def show(self):
         self.fig = plt.figure(tight_layout=True)
@@ -74,11 +76,12 @@ class SpectrumDislpay:
             f"{self._plot_state.single_spec_count} in total)."
         )
 
-        self._plot_state.cached_plots.append(
-            self._plot_state.currently_plotted
-        )
+        if self._plot_state.currently_plotted.name != "NULL":
+            self._plot_state.cached_plots.append(
+                self._plot_state.currently_plotted
+            )
         self._plot_state.currently_plotted = PlottedSingleSectrum(
-            name=f"SPECTRUM_{self._plot_state.single_spec_count:.02d}",
+            name=f"SPECTRUM_{self._plot_state.single_spec_count:02d}",
             plot_obj=sp,
             wvl=self.wvl,
             data=dat,
@@ -111,14 +114,15 @@ class SpectrumDislpay:
 
         print(
             f"Averaged {nspec} spectra. ({self._plot_state.mean_spec_count}"
-            "mean spectra in total.)"
+            " mean spectra in total.)"
         )
 
         save_pixel_coords = np.hstack((y_vals, x_vals))
 
-        self._plot_state.cached_plots.append(
-            self._plot_state.currently_plotted
-        )
+        if self._plot_state.currently_plotted.name != "NULL":
+            self._plot_state.cached_plots.append(
+                self._plot_state.currently_plotted
+            )
         self._plot_state.currently_plotted = PlottedMeanSpectrum(
             name=f"AREA_{self._plot_state.mean_spec_count:02d}",
             plot_obj=sp,
@@ -151,7 +155,7 @@ class SpectrumDislpay:
                     f[f"{obj.name}_error"] = obj.data_err
                     f[f"{obj.name}_coords"] = obj.pixel_coords
                 elif isinstance(obj, PlottedSingleSectrum):
-                    f.attrs["coordinate"] = obj.pixel_coord
+                    f[obj.name].attrs["coordinate"] = obj.pixel_coord
             f.attrs["wvls"] = self.wvl
 
     def close(self):
@@ -200,6 +204,7 @@ class ImageDisplay:
         mpl_kwargs = {**default_mpl, **mpl_kwargs}
 
         self.image_obj = self.display_ax.imshow(self.display, **mpl_kwargs)
+
         finite_img = self.display[np.isfinite(self.display)]
         self.targ_slider = RangeSlider(
             ax=self.slider_ax,
@@ -213,7 +218,16 @@ class ImageDisplay:
         )
         self.targ_slider.on_changed(self.update)
 
-        self._state = PanningState()
+        self._state = ImagePlotState()
+
+        y, x = np.mgrid[
+            0 : self.display.shape[0],  # noqa: E203
+            0 : self.display.shape[1],  # noqa: E203
+        ]
+        self.pixel_coords = np.column_stack((x.ravel(), y.ravel()))
+
+        self.selector = LassoSelector(self.display_ax, onselect=self.onselect)
+        self.selector.set_active(False)
 
         self.display_fig.canvas.mpl_connect("scroll_event", self.on_scroll)
         self.display_fig.canvas.mpl_connect(
@@ -225,6 +239,12 @@ class ImageDisplay:
         self.display_fig.canvas.mpl_connect(
             "motion_notify_event", self.on_motion
         )
+        self.display_fig.canvas.mpl_connect(
+            "key_press_event", self.on_key_press
+        )
+        self.display_fig.canvas.mpl_connect(
+            "key_release_event", self.on_key_release
+        )
 
     def update(self, _val):
         self.image_obj.set_clim(*self.targ_slider.val)
@@ -234,19 +254,77 @@ class ImageDisplay:
 
     def on_button_press(self, event):
         if (event.button == 2) and (event.inaxes == self.display_ax):
-            self._state.is_panning = True
-            self._state.pan_start = (event.x, event.y)
-            self._state.pan_ax = event.inaxes
+            self._state.panning.is_panning = True
+            self._state.panning.pan_start = (event.x, event.y)
+            self._state.panning.pan_ax = event.inaxes
+        if (
+            (event.button == 1)
+            and (event.inaxes == self.display_ax)
+            and self._state.collect_spectra
+            and (self._state.collect_area is False)
+        ):
+            x = int(round(event.xdata))
+            y = int(round(event.ydata))
+            self.specdisplay.plot(x, y)
+            [p.remove() for p in self.display_ax.patches]
+
+            rect = Rectangle(
+                (x - 0.5, y - 0.5),
+                1,
+                1,
+                linewidth=2,
+                edgecolor="red",
+                facecolor="none",
+            )
+            self.display_ax.add_patch(rect)
+            self.display_fig.canvas.draw_idle()
 
     def on_button_release(self, event):
         if event.button == 2:
-            self._state.is_panning = False
-            self._state.pan_start = None
-            self._state.pan_ax = None
+            self._state.panning.is_panning = False
+            self._state.panning.pan_start = None
+            self._state.panning.pan_ax = None
+
+    def on_key_press(self, event):
+        if event.key == "shift":
+            if self._state.collect_spectra is False:
+                self._state.collect_spectra = True
+
+                self.specdisplay.toggle()
+            elif self._state.collect_spectra is True:
+                self._state.collect_spectra = False
+                [p.remove() for p in self.display_ax.patches]
+
+                self.specdisplay.toggle()
+                self.display_fig.canvas.draw_idle()
+
+            self.display_fig.canvas.draw_idle()
+
+        if event.key == "control" and self._state.collect_spectra:
+            self._state.collect_area = True
+            self.selector.set_active(True)
+
+    def on_key_release(self, event):
+        if event.key == "control" and self._state.collect_spectra:
+            self._state.collect_area = False
+            self.selector.set_active(False)
 
     def on_motion(self, event):
-        apply_panning(event, self._state, sensitivity=0.4)
+        apply_panning(event, self._state.panning, sensitivity=0.4)
         self.display_fig.canvas.draw_idle()
+
+    def onselect(self, vertices):
+        path = Path(vertices)
+        inside = path.contains_points(self.pixel_coords)
+        idxs = np.nonzero(inside)[0]
+        cols, rows = np.unravel_index(
+            idxs, (self.display.shape[0], self.display.shape[1])
+        )
+        selected_pixels = list(zip(rows, cols))
+        self.specdisplay.plot_average(
+            cols.astype(np.int16), rows.astype(np.int16)
+        )
+        print(f"{len(selected_pixels)} pixels in area")
 
 
 class SpectrumPicker:
