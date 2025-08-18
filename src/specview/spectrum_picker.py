@@ -248,6 +248,7 @@ class ImageDisplay:
 
     def update(self, _val):
         self.image_obj.set_clim(*self.targ_slider.val)
+        self.display_fig.canvas.draw_idle()
 
     def on_scroll(self, event):
         apply_zoom(event, self.display, self.display_ax)
