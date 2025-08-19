@@ -1,5 +1,5 @@
-from .spectrum_picker import SpectrumPicker
+from .spectrum_picker import open_spectrum_picker
 
 __all__ = [
-    "SpectrumPicker",
+    "open_spectrum_picker",
 ]
