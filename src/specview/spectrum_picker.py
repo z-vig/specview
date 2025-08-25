@@ -5,6 +5,7 @@ from typing import Any, Optional, Tuple, Sequence
 # Dependencies
 import numpy as np
 import numpy.typing as npt
+import matplotlib as mpl
 
 # Relative Imports
 from .spectrum_picker_classes import (
@@ -54,7 +55,34 @@ def open_spectrum_picker(
     wvl: npt.NDArray[np.floating[Any]],
     display_image: Optional[npt.NDArray[np.floating[Any]]] = None,
     display_bands: Optional[int | Tuple[int, int, int]] = None,
-):
+    comparison_cubes: Sequence[npt.NDArray[np.floating[Any]]] = [],
+) -> None:
+    """
+    Opens a spectrum picker GUI using the current backend.
+
+    Parameters
+    ----------
+    spectral_cube: ndarray of floats
+        Main spectral data cube to examine. The cube must be in the bands-last
+        configuration.
+    wvl: ndarray of floats
+        Wavelength values corresponding tothe spectral domain of the cube.
+    display_image: ndarray of floats, optional
+        An image (2D array) to display as the spectral picking surface rather
+        than (a) band(s) from the spectral cube. If None (default), the picking
+        surface image will be derived from the spectral cube.
+    display_bands: int or tuple of 3 integers, optional
+        If a single `int` is passed, that band index will be chosen as the
+        display image derived from the spectral cube. If three integers are
+        passed, an RGB image of those three indices derived from the cube will
+        be displayed. If both `display_image` and `display_bands` are None
+        (default), three equally spaced bands will be chosen from the spectral
+        cube to be displayed as an RGB image.
+    comparison_cubes: Sequence of ndarrays
+        Spectra from these cubes will be plotted alongside the main spectral
+        cube.
+    """
+    mpl.use("qtagg")
     picker_mode = classify_picker_mode(display_image, display_bands)
     bands: tuple[int, ...] = ()
     img = None
@@ -77,7 +105,7 @@ def open_spectrum_picker(
             rgb = ThreeBandRGB(spectral_cube, *display_bands)
             bands = tuple(display_bands)
 
-    specdisplay = SpectrumDislpay(wvl, spectral_cube)
+    specdisplay = SpectrumDislpay(wvl, spectral_cube, comparison_cubes)
 
     if rgb is not None:
         RGBImageDisplay(rgb, specdisplay, bands)

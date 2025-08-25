@@ -1,5 +1,7 @@
 # Standard Libraries
 from typing import Optional, Sequence
+from pathlib import Path as FilePath
+from datetime import datetime
 
 # Dependencies
 import numpy as np
@@ -34,9 +36,11 @@ class SpectrumDislpay:
         self,
         wvl: npt.NDArray[np.floating],
         spectral_cube: npt.NDArray[np.floating],
+        comparison_cubes: Sequence[npt.NDArray[np.floating]] = [],
     ):
         self.wvl = wvl
         self.data = spectral_cube
+        self.comp = comparison_cubes
         self.fig: Optional[Figure] = None
         self.plot_ax: Optional[Axes] = None
         self._plot_state = SpectrumPlotState()
@@ -71,6 +75,13 @@ class SpectrumDislpay:
 
         if self.plot_ax is not None:
             (sp,) = self.plot_ax.plot(self.wvl, dat)
+            for comparison in self.comp:
+                _ = self.plot_ax.plot(
+                    self.wvl,
+                    comparison[y, x, :],
+                    color=sp.get_color(),
+                    alpha=0.5,
+                )
         else:
             raise PlotNotInitializedError("Axis was not initialized.")
 
@@ -151,14 +162,24 @@ class SpectrumDislpay:
             initialdir="./",
         )
 
-        with h5.File(file, "w") as f:
+        if not FilePath(file).is_file():
+            open_flag = "w"
+        else:
+            open_flag = "r+"
+
+        with h5.File(file, open_flag) as f:
+            g = f.create_group(
+                f"save_{datetime.now().strftime("%m%d%YT%H%M%S")}"
+            )
             for obj in self._plot_state.cached_plots:
-                f[obj.name] = obj.data
+                g.create_dataset(obj.name, data=obj.data)
                 if isinstance(obj, PlottedMeanSpectrum):
-                    f[f"{obj.name}_error"] = obj.data_err
-                    f[f"{obj.name}_coords"] = obj.pixel_coords
+                    g.create_dataset(f"{obj.name}_error", data=obj.data_err)
+                    g.create_dataset(
+                        f"{obj.name}_coords", data=obj.pixel_coords
+                    )
                 elif isinstance(obj, PlottedSingleSectrum):
-                    f[obj.name].attrs["coordinate"] = obj.pixel_coord
+                    g[obj.name].attrs["coordinate"] = obj.pixel_coord
             f.attrs["wvls"] = self.wvl
 
     def close(self):
