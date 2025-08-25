@@ -79,6 +79,7 @@ class SpectrumPlotState:
         default_factory=lambda: PlottedSpectrum.null()
     )
     cached_plots: list[PlottedSpectrum] = field(default_factory=list)
+    extra_plots: list[Line2D] = field(default_factory=list)
     plot_activate: bool = False
     single_spec_count: int = 0
     mean_spec_count: int = 0

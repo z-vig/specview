@@ -60,7 +60,9 @@ class SpectrumDislpay:
 
     def clear_spectra(self, event):
         [i.plot_obj.remove() for i in self._plot_state.cached_plots]
+        [i.remove() for i in self._plot_state.extra_plots]
         self._plot_state.cached_plots = []
+        self._plot_state.extra_plots = []
         self._plot_state.single_spec_count = 0
         self._plot_state.mean_spec_count = 0
 
@@ -76,12 +78,13 @@ class SpectrumDislpay:
         if self.plot_ax is not None:
             (sp,) = self.plot_ax.plot(self.wvl, dat)
             for comparison in self.comp:
-                _ = self.plot_ax.plot(
+                (_sp,) = self.plot_ax.plot(
                     self.wvl,
                     comparison[y, x, :],
                     color=sp.get_color(),
                     alpha=0.5,
                 )
+                self._plot_state.extra_plots.append(_sp)
         else:
             raise PlotNotInitializedError("Axis was not initialized.")
 
