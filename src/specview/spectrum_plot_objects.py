@@ -19,7 +19,7 @@ class PlottedSpectrum:
 
 
 @dataclass
-class PlottedSingleSectrum(PlottedSpectrum):
+class PlottedSingleSpectrum(PlottedSpectrum):
     pixel_coord: tuple[int, int]
 
 

@@ -22,7 +22,11 @@ from .scrolling_actions import apply_zoom
 from .motion_actions import apply_panning, apply_crosshairs
 from .color_slider import add_slider, add_rgb_slider
 from .gui_states import ImagePlotState, SpectrumPlotState
-from .spectrum_plot_objects import PlottedMeanSpectrum, PlottedSingleSectrum
+from .spectrum_plot_objects import (
+    PlottedMeanSpectrum,
+    PlottedSingleSpectrum,
+    PlottedSpectrum,
+)
 from .rgb_image import ThreeBandRGB
 
 
@@ -59,6 +63,10 @@ class SpectrumDislpay:
         plt.show(block=False)
 
     def clear_spectra(self, event):
+        self._plot_state.cached_plots.append(
+            self._plot_state.currently_plotted
+        )
+        self._plot_state.currently_plotted = PlottedSpectrum.null()
         [i.plot_obj.remove() for i in self._plot_state.cached_plots]
         [i.remove() for i in self._plot_state.extra_plots]
         self._plot_state.cached_plots = []
@@ -97,7 +105,7 @@ class SpectrumDislpay:
             self._plot_state.cached_plots.append(
                 self._plot_state.currently_plotted
             )
-        self._plot_state.currently_plotted = PlottedSingleSectrum(
+        self._plot_state.currently_plotted = PlottedSingleSpectrum(
             name=f"SPECTRUM_{self._plot_state.single_spec_count:02d}",
             plot_obj=sp,
             wvl=self.wvl,
@@ -181,7 +189,7 @@ class SpectrumDislpay:
                     g.create_dataset(
                         f"{obj.name}_coords", data=obj.pixel_coords
                     )
-                elif isinstance(obj, PlottedSingleSectrum):
+                elif isinstance(obj, PlottedSingleSpectrum):
                     g[obj.name].attrs["coordinate"] = obj.pixel_coord
             f.attrs["wvls"] = self.wvl
 
