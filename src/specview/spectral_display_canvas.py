@@ -1,30 +1,96 @@
 # Standard Libraries
-# from typing import Any, TypedDict, Optional
+from pathlib import Path as FilePath
+from datetime import datetime
 
 # Dependencies
 import numpy as np
 import matplotlib.pyplot as plt
+import h5py as h5  # type: ignore
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
+from matplotlib import colormaps
 import PyQt6.QtWidgets as qtw
+from tkinter.filedialog import asksaveasfilename
 
 # Top-Level Imports
-from specview.gui_state_classes import SpectralState
+from specview.gui_state_classes import (
+    SpectralState,
+    PixelCoordinate,
+    PlottedSingleSpectrum,
+    PlottedMeanSpectrum,
+)
 
 
 class SpectralCanvas(FigureCanvasQTAgg):
     def __init__(
         self,
-        init_spectrum: np.ndarray,
+        cube: np.ndarray,
         wvl: np.ndarray,
-        parent: qtw.QMainWindow,
+        parent: qtw.QWidget,
+        colormap: str = "tab10",
     ):
         fig, self.spec_axis = plt.subplots(1, 1)
+        self.spec_axis.margins(0, 0)
         super().__init__(fig)
 
+        self.cube = cube
         self.wvl = wvl
-        self.state = SpectralState(current_spectrum=init_spectrum)
+        self.state = SpectralState()
+        self.parent = parent
 
-        # ========= Plotting spectrum using plt.plot ==========
-        self.spec_axis.plot(self.wvl, self.state.current_spectrum)
-        self.spec_axis.set_xlabel("Wavelength (nm)")
-        self.spec_axis.set_ylabel("Reflectance")
+        self.cmap = colormaps.get_cmap(colormap)
+
+    def add_spectrum(self, c: PixelCoordinate):
+        spectrum_data = c.pull_data(self.cube)
+        (line,) = self.spec_axis.plot(
+            self.wvl,
+            spectrum_data,
+            color=self.cmap(self.state.nspectra / self.cmap.N),
+        )
+
+        spectrum = PlottedSingleSpectrum(
+            f"SPECTRUM_{self.state.nspectra+1:02d}",
+            line,
+            self.wvl,
+            spectrum_data,
+            c,
+        )
+        self.state.nspectra += 1
+        self.state.spectral_catalog.append(spectrum)
+        self.state.current_spectrum = spectrum
+
+        self.spec_axis.autoscale()
+        self.draw_idle()
+
+    def clear_spectra(self):
+        [i.plot_obj.remove() for i in self.state.spectral_catalog]
+        self.state = SpectralState()
+        self.draw_idle()
+
+    def save_spectra(self):
+        file = asksaveasfilename(
+            filetypes=[("HDF5", "*.hdf5")],
+            defaultextension="*.hdf5",
+            initialdir="./",
+        )
+
+        if not FilePath(file).is_file():
+            open_flag = "w"
+        else:
+            open_flag = "r+"
+
+        with h5.File(file, open_flag) as f:
+            g = f.create_group(
+                f"save_{datetime.now().strftime("%m%d%YT%H%M%S")}"
+            )
+            for obj in self.state.spectral_catalog:
+                g.create_dataset(obj.name, data=obj.data)
+                if isinstance(obj, PlottedMeanSpectrum):
+                    g.create_dataset(f"{obj.name}_error", data=obj.data_err)
+                    g.create_dataset(
+                        f"{obj.name}_coords", data=obj.pixel_coords
+                    )
+                elif isinstance(obj, PlottedSingleSpectrum):
+                    g[obj.name].attrs[
+                        "coordinate"
+                    ] = obj.pixel_coord.as_tuple()
+            f.attrs["wvls"] = self.wvl

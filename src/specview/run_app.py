@@ -3,31 +3,50 @@ import sys
 
 # Dependencies
 import numpy as np
-import PyQt6.QtWidgets as qtw
+from PyQt6.QtWidgets import (
+    QWidget,
+    QMainWindow,
+    QHBoxLayout,
+    QApplication,
+    QPushButton,
+    QVBoxLayout,
+)
 
 # Top-Level Imports
 from specview.image_display_canvas import ImageCanvas, ImageCanvasSettings
 from specview.spectral_display_canvas import SpectralCanvas
 
 
-class SpectralWindow(qtw.QMainWindow):
+class SpectralWindow(QWidget):
     def __init__(
-        self, cube: np.ndarray, wvl: np.ndarray, *args, **kwargs
+        self,
+        cube: np.ndarray,
+        wvl: np.ndarray,
+        *args,
+        **kwargs,
     ) -> None:
         super().__init__(*args, **kwargs)
 
-        spec_canvas = SpectralCanvas(parent=self)
+        self.spec_canvas = SpectralCanvas(cube, wvl, parent=self)
 
-        layout = qtw.QVBoxLayout()
-        layout.addWidget(spec_canvas)
+        button_layout = QHBoxLayout()
+        btn = QPushButton("Clear Spectra")
+        btn.pressed.connect(self.spec_canvas.clear_spectra)
+        button_layout.addWidget(btn)
 
-        widget = qtw.QWidget()
-        widget.setLayout(layout)
+        btn = QPushButton("Save Spectra")
+        btn.pressed.connect(self.spec_canvas.save_spectra)
+        button_layout.addWidget(btn)
+
+        layout = QVBoxLayout()
+        layout.addWidget(self.spec_canvas)
+        layout.addLayout(button_layout)
+
+        self.setLayout(layout)
         self.setWindowTitle("Spectral Window")
-        self.setCentralWidget(widget)
 
 
-class MainWindow(qtw.QMainWindow):
+class MainWindow(QMainWindow):
     def __init__(
         self,
         cube: np.ndarray,
@@ -43,30 +62,34 @@ class MainWindow(qtw.QMainWindow):
 
         default_settings = ImageCanvasSettings(zoom_speed=1.3)
 
+        self.spec_window = SpectralWindow(cube, wvl)
+
         im_canvas = ImageCanvas(
-            display_image, settings=default_settings, parent=self
+            display_image,
+            settings=default_settings,
+            connected_spectral_canvas=self.spec_window.spec_canvas,
+            parent=self,
         )
 
-        layout = qtw.QVBoxLayout()
+        layout = QVBoxLayout()
         layout.addWidget(im_canvas)
 
-        widget = qtw.QWidget()
+        widget = QWidget()
         widget.setLayout(layout)
         self.setWindowTitle("SpecView Version 0.2")
         self.setCentralWidget(widget)
 
         self.w = None
 
-    def open_spectral_window(self):
-        if self.w is None:
-            self.w = SpectralWindow(self.cube, self.wvl)
-        self.w.show()
+    def show_spectral_window(self):
+        if not self.spec_window.isVisible():
+            self.spec_window.show()
 
 
 def open_specview(
     cube: np.ndarray, wvl: np.ndarray, display_image: np.ndarray
 ):
-    app = qtw.QApplication(sys.argv)
+    app = QApplication(sys.argv)
     w = MainWindow(cube, wvl, display_image)
     w.show()
     app.exec()

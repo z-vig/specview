@@ -9,8 +9,9 @@ from matplotlib.backend_bases import Event, MouseEvent
 
 # Top-Level Dependencies
 from specview.slots import scrolling_zoom, motion_panning  # noqa
-from specview.gui_state_classes import ImageState
+from specview.gui_state_classes import ImageState, PixelCoordinate
 from specview.utils import square_image
+from specview.spectral_display_canvas import SpectralCanvas
 
 
 class ImageCanvasSettings(TypedDict):
@@ -35,15 +36,25 @@ class ImageCanvas(FigureCanvasQTAgg):
         include:
 
         - zoom_speed: float // Speed of zoom in/out while scrolling.
-    parent: QMainWindow
 
+    shared_gui_state: SharedState
+        An instance of a shared GUI state class, holding information to be
+        passed between the image window and the spectral window, such as image
+        coordinates.
+    parent: QMainWindow
+        Parent Qt window.
     """
 
     def __init__(
-        self, img_data: np.ndarray, settings: ImageCanvasSettings, parent
+        self,
+        img_data: np.ndarray,
+        settings: ImageCanvasSettings,
+        connected_spectral_canvas: SpectralCanvas,
+        parent,
     ):
         self.settings = settings
         self.parent = parent
+        self.spec_canv = connected_spectral_canvas
         fig, self.img_axis = plt.subplots(1, 1, tight_layout=True)
 
         offsets, square_img = square_image(img_data)
@@ -84,7 +95,12 @@ class ImageCanvas(FigureCanvasQTAgg):
 
         if event.button == 1:
             if event.inaxes == self.img_axis:
-                self.parent.open_spectral_window()
+                self.parent.show_spectral_window()
+                c = PixelCoordinate(
+                    x=event.xdata + self.state.img_offsets.x_offset,
+                    y=event.ydata + self.state.img_offsets.y_offset,
+                )
+                self.spec_canv.add_spectrum(c)
 
     def on_button_release(self, event: Event) -> Any:
         if not isinstance(event, MouseEvent):
