@@ -1,5 +1,5 @@
-from .spectrum_picker import open_spectrum_picker
+from .run_app import open_specview
 
 __all__ = [
-    "open_spectrum_picker",
+    "open_specview",
 ]
