@@ -3,6 +3,7 @@ import sys
 
 # Dependencies
 import numpy as np
+from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QWidget,
     QMainWindow,
@@ -70,6 +71,9 @@ class MainWindow(QMainWindow):
             connected_spectral_canvas=self.spec_window.spec_canvas,
             parent=self,
         )
+
+        im_canvas.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        im_canvas.setFocus()
 
         layout = QVBoxLayout()
         layout.addWidget(im_canvas)

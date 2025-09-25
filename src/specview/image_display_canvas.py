@@ -5,10 +5,10 @@ from typing import Any, TypedDict
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
-from matplotlib.backend_bases import Event, MouseEvent
+from matplotlib.backend_bases import Event, MouseEvent, KeyEvent
 
 # Top-Level Dependencies
-from specview.slots import scrolling_zoom, motion_panning  # noqa
+from specview.slots import scrolling_zoom, motion_panning, crosshairs
 from specview.gui_state_classes import ImageState, PixelCoordinate
 from specview.utils import square_image
 from specview.spectral_display_canvas import SpectralCanvas
@@ -68,12 +68,20 @@ class ImageCanvas(FigureCanvasQTAgg):
         self.img_data = img_data
         # =========================================================
 
+        self.state.crosshair.add_to_axes(
+            self.img_axis,
+            self.spec_canv.spec_axis,
+            self.spec_canv.wvl,
+            self.spec_canv.cube,
+        )
+
         super().__init__(fig)
 
         # Connecting all slots to matplotlib signals
         self.mpl_connect("scroll_event", self.on_scroll)
         self.mpl_connect("button_press_event", self.on_button_press)
         self.mpl_connect("button_release_event", self.on_button_release)
+        self.mpl_connect("key_press_event", self.on_key_press)
         self.mpl_connect("motion_notify_event", self.on_motion)
 
     def on_scroll(self, event: Event) -> Any:
@@ -116,7 +124,16 @@ class ImageCanvas(FigureCanvasQTAgg):
             return
 
         motion_panning(self.img_axis, self.state, event)
+        crosshairs(
+            self.img_axis,
+            self.spec_canv.spec_axis,
+            self.spec_canv.cube,
+            self.spec_canv.wvl,
+            self.state,
+            event,
+        )
         self.draw_idle()
+        self.spec_canv.draw_idle()
 
         # print(
         #     "Data Coords: ("
@@ -124,3 +141,10 @@ class ImageCanvas(FigureCanvasQTAgg):
         #     f"{event.ydata + self.state.img_offsets.y_offset}), "
         #     f" Figure Coords: {event.x}, {event.y}"
         # )
+
+    def on_key_press(self, event: Event) -> Any:
+        if not isinstance(event, KeyEvent):
+            return
+
+        if event.key == "c":
+            self.state.crosshair.is_active = not self.state.crosshair.is_active
