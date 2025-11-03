@@ -1,5 +1,6 @@
 # Standard Libraries
 import sys
+from typing import Optional
 
 # Dependencies
 import numpy as np
@@ -24,12 +25,15 @@ class SpectralWindow(QWidget):
         self,
         cube: np.ndarray,
         wvl: np.ndarray,
+        geotrans: tuple[float, float, float, float, float, float],
         *args,
         **kwargs,
     ) -> None:
         super().__init__(*args, **kwargs)
 
-        self.spec_canvas = SpectralCanvas(cube, wvl, parent=self)
+        self.spec_canvas = SpectralCanvas(
+            cube, wvl, parent=self, gtrans=geotrans
+        )
 
         button_layout = QHBoxLayout()
         btn = QPushButton("Clear Spectra")
@@ -54,6 +58,7 @@ class MainWindow(QMainWindow):
         cube: np.ndarray,
         wvl: np.ndarray,
         display_image: np.ndarray,
+        geotrans: tuple[float, float, float, float, float, float],
         *args,
         **kwargs,
     ) -> None:
@@ -62,7 +67,7 @@ class MainWindow(QMainWindow):
         self.cube = cube
         self.wvl = wvl
 
-        self.spec_window = SpectralWindow(cube, wvl)
+        self.spec_window = SpectralWindow(cube, wvl, geotrans)
 
         if display_image.ndim == 2:
             default_settings = ImageCanvasSettings(zoom_speed=1.3)
@@ -107,7 +112,12 @@ class MainWindow(QMainWindow):
 
 
 def open_specview(
-    cube: np.ndarray, wvl: np.ndarray, display_image: np.ndarray
+    cube: np.ndarray,
+    wvl: np.ndarray,
+    display_image: np.ndarray,
+    geotransform: Optional[
+        tuple[float, float, float, float, float, float]
+    ] = None,
 ):
     """
     Opens a SpecView GUI for viewing spectral data.
@@ -128,8 +138,11 @@ def open_specview(
     - Spectrum selection // left click
     - Toggle browse mode // press c
     """
+    if geotransform is None:
+        geotransform = (0, 1, 0, 0, 0, 1)
+
     app = QApplication(sys.argv)
-    w = MainWindow(cube, wvl, display_image)
+    w = MainWindow(cube, wvl, display_image, geotransform)
     w.show()
     app.exec()
 

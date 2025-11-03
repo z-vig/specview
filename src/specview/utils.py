@@ -128,3 +128,15 @@ def find_wvl(wvls: np.ndarray, targetwvl: float):
 
     idx = np.argmin(np.abs(wvls - targetwvl))
     return idx, wvls[idx]
+
+
+def forward_geotransform(
+    x_pixel: float,
+    y_pixel: float,
+    geotrans: tuple[float, float, float, float, float, float],
+) -> Tuple[float, float]:
+    """Converts from pixel coordinates to map coordinates"""
+    origin_x, pixel_width, _, origin_y, _, pixel_height = geotrans
+    x_geo = origin_x + x_pixel * pixel_width
+    y_geo = origin_y + y_pixel * pixel_height
+    return (x_geo, y_geo)

@@ -1,15 +1,13 @@
 # Standard Libraries
 from pathlib import Path as FilePath
-from datetime import datetime
 
 # Dependencies
 import numpy as np
 import matplotlib.pyplot as plt
-import h5py as h5  # type: ignore
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib import colormaps
 import PyQt6.QtWidgets as qtw
-from tkinter.filedialog import asksaveasfilename
+from tkinter.filedialog import askdirectory
 
 # Top-Level Imports
 from specview.gui_state_classes import (
@@ -18,6 +16,8 @@ from specview.gui_state_classes import (
     PlottedSingleSpectrum,
     PlottedMeanSpectrum,
 )
+from specview.save_models import FullSpectrum, SpectrumCollection
+from specview.utils import forward_geotransform
 
 
 class SpectralCanvas(FigureCanvasQTAgg):
@@ -26,6 +26,7 @@ class SpectralCanvas(FigureCanvasQTAgg):
         cube: np.ndarray,
         wvl: np.ndarray,
         parent: qtw.QWidget,
+        gtrans: tuple[float, float, float, float, float, float],
         colormap: str = "tab10",
     ):
         fig, self.spec_axis = plt.subplots(1, 1)
@@ -36,6 +37,7 @@ class SpectralCanvas(FigureCanvasQTAgg):
         self.wvl = wvl
         self.state = SpectralState()
         self.parent = parent
+        self.gtrans = gtrans
 
         self.cmap = colormaps.get_cmap(colormap)
 
@@ -107,30 +109,49 @@ class SpectralCanvas(FigureCanvasQTAgg):
         self.draw_idle()
 
     def save_spectra(self):
-        file = asksaveasfilename(
-            filetypes=[("SPEC", "*.spec")],
-            defaultextension="*.spec",
-            initialdir="./",
-        )
+        save_dir = askdirectory(initialdir="./")
 
-        if not FilePath(file).is_file():
-            open_flag = "w"
-        else:
-            open_flag = "r+"
-
-        with h5.File(file, open_flag) as f:
-            g = f.create_group(
-                f"save_{datetime.now().strftime("%m%d%YT%H%M%S")}"
-            )
-            for obj in self.state.spectral_catalog:
-                g.create_dataset(obj.name, data=obj.data)
-                if isinstance(obj, PlottedMeanSpectrum):
-                    g.create_dataset(f"{obj.name}_error", data=obj.data_err)
-                    g.create_dataset(
-                        f"{obj.name}_coords", data=obj.coords_as_array()
+        for obj in self.state.spectral_catalog:
+            file = FilePath(save_dir, obj.name).with_suffix(".spec")
+            if isinstance(obj, PlottedSingleSpectrum):
+                long, lat = forward_geotransform(
+                    obj.pixel_coord.x, obj.pixel_coord.y, self.gtrans
+                )
+                spec_model = FullSpectrum(
+                    wavelength=obj.wvl.tolist(),
+                    spectrum=obj.data.tolist(),
+                    pixel_row=int(obj.pixel_coord.y),
+                    pixel_col=int(obj.pixel_coord.x),
+                    latitude=lat,
+                    longitude=long,
+                )
+            elif isinstance(obj, PlottedMeanSpectrum):
+                crd_arr = obj.coords_as_array().astype(int)
+                collection_list = []
+                for n in range(crd_arr.shape[0]):
+                    long, lat = forward_geotransform(
+                        crd_arr[n, 0], crd_arr[n, 1], self.gtrans
                     )
-                elif isinstance(obj, PlottedSingleSpectrum):
-                    g[obj.name].attrs[
-                        "coordinate"
-                    ] = obj.pixel_coord.as_tuple()
-            f.attrs["wvls"] = self.wvl
+                    print(crd_arr[n, :])
+                    single_spec = FullSpectrum(
+                        wavelength=obj.wvl.tolist(),
+                        spectrum=self.cube[
+                            crd_arr[n, 1], crd_arr[n, 0], :
+                        ].tolist(),
+                        pixel_row=crd_arr[n, 1],
+                        pixel_col=crd_arr[n, 0],
+                        latitude=lat,
+                        longitude=long,
+                    )
+                    collection_list.append(single_spec)
+                spec_model = SpectrumCollection[FullSpectrum](
+                    wavelength=obj.wvl.tolist(),
+                    mean=obj.data.tolist(),
+                    error=obj.data_err.tolist(),
+                    component_list=collection_list,
+                )
+            else:
+                raise ValueError("Obj is not of the correct type")
+
+            with open(file, "w") as f:
+                f.write(spec_model.model_dump_json(indent=2))
