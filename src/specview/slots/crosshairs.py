@@ -11,7 +11,6 @@ def crosshairs(
     img_axis: Axes,
     spec_axis: Axes,
     cube: np.ndarray,
-    wvl: np.ndarray,
     state: ImageState,
     event: Event,
 ):

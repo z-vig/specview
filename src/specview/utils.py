@@ -11,7 +11,9 @@ class SquareOffset(NamedTuple):
     y_offset: int = 0
 
 
-def square_image(img: np.ndarray) -> tuple[SquareOffset, np.ndarray]:
+def square_image(
+    img: np.ndarray, rgb: bool = False
+) -> tuple[SquareOffset, np.ndarray]:
     """
     Pads a rectangular image to make it square, for the purpose of reshaping
     an image axis to be better suited for GUI applications.
@@ -20,6 +22,8 @@ def square_image(img: np.ndarray) -> tuple[SquareOffset, np.ndarray]:
     ----------
     img: np.ndarray
         Image array.
+    rgb: bool, optional
+        Option to specify RGB image input.
 
     Returns
     -------
@@ -31,22 +35,39 @@ def square_image(img: np.ndarray) -> tuple[SquareOffset, np.ndarray]:
         Image with np.nan values padding the sides to fit the square
     """
     long_axis = np.argmax(img.shape)
-    short_axis = np.argmin(img.shape)
-    padding_length = (img.shape[long_axis] - img.shape[short_axis]) // 2
-    square_padding = np.full(
-        (img.shape[long_axis], padding_length),
-        np.nan,
-    )
-    square_img = np.concat(
-        [square_padding, img, square_padding], axis=short_axis
-    )
+    if not rgb:
+        short_axis = np.argmin(img.shape)
+        padding_length = (img.shape[long_axis] - img.shape[short_axis]) // 2
+        square_padding = np.full(
+            (img.shape[long_axis], padding_length),
+            np.nan,
+        )
+        square_img = np.concat(
+            [square_padding, img, square_padding], axis=short_axis
+        )
 
-    if long_axis < short_axis:
-        offset = SquareOffset(-padding_length, 0)
+        if long_axis < short_axis:
+            offset = SquareOffset(-padding_length, 0)
+        else:
+            offset = SquareOffset(0, -padding_length)
+
+        return offset, square_img
     else:
-        offset = SquareOffset(0, -padding_length)
-
-    return offset, square_img
+        short_axis = np.argmin(img.shape[:-1])
+        padding_length = (img.shape[long_axis] - img.shape[short_axis]) // 2
+        square_padding = np.full(
+            (img.shape[long_axis], padding_length, 3),
+            np.nan,
+        )
+        square_img = np.concat(
+            [square_padding, img, square_padding],
+            axis=short_axis,
+        )
+        if long_axis < short_axis:
+            offset = SquareOffset(-padding_length, 0)
+        else:
+            offset = SquareOffset(0, -padding_length)
+        return offset, square_img
 
 
 def set_image_axis(ax: Axes) -> None:

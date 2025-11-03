@@ -16,11 +16,11 @@ from specview.utils import square_image
 from specview.spectral_display_canvas import SpectralCanvas
 
 
-class ImageCanvasSettings(TypedDict):
+class RGBCanvasSettings(TypedDict):
     zoom_speed: float
 
 
-class ImageCanvas(FigureCanvasQTAgg):
+class RGBCanvas(FigureCanvasQTAgg):
     """
     Widget for displaying and interacting with a 2D image that is
     representative of a spectral cube. The following implemented interactions
@@ -50,7 +50,7 @@ class ImageCanvas(FigureCanvasQTAgg):
     def __init__(
         self,
         img_data: np.ndarray,
-        settings: ImageCanvasSettings,
+        settings: RGBCanvasSettings,
         connected_spectral_canvas: SpectralCanvas,
         parent,
     ):
@@ -59,14 +59,14 @@ class ImageCanvas(FigureCanvasQTAgg):
         self.spec_canv = connected_spectral_canvas
         fig, self.img_axis = plt.subplots(1, 1, tight_layout=True)
 
-        offsets, self.square_img = square_image(img_data)
+        offsets, self.square_img = square_image(img_data, rgb=True)
 
         self.state = ImageState()
         self.state.lasso.set_pixel_coords(self.square_img)
         self.state.img_offsets = offsets
 
         # ========= Plotting the image using plt.imshow ==========
-        self.img_axis.imshow(self.square_img, cmap="gray")
+        self.img_axis.imshow(self.square_img)
         self.img_axis.set_axis_off()
         self.img_data = img_data
         # =========================================================
@@ -115,6 +115,7 @@ class ImageCanvas(FigureCanvasQTAgg):
                     x=event.xdata + self.state.img_offsets.x_offset,
                     y=event.ydata + self.state.img_offsets.y_offset,
                 )
+                print(c)
                 self.spec_canv.add_spectrum(c)
 
     def on_button_release(self, event: Event) -> Any:
@@ -184,7 +185,7 @@ class ImageCanvas(FigureCanvasQTAgg):
         path = Path(vertices)
         inside = path.contains_points(self.state.lasso.pixel_coords)
         idxs = np.nonzero(inside)[0]
-        h, w = self.square_img.shape
+        h, w, _ = self.square_img.shape
         rows, cols = np.unravel_index(idxs, (h, w))
         selected_pixels = [
             PixelCoordinate(

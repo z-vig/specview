@@ -15,6 +15,7 @@ from PyQt6.QtWidgets import (
 
 # Top-Level Imports
 from specview.image_display_canvas import ImageCanvas, ImageCanvasSettings
+from specview.rgb_display_canvas import RGBCanvas, RGBCanvasSettings
 from specview.spectral_display_canvas import SpectralCanvas
 
 
@@ -61,16 +62,31 @@ class MainWindow(QMainWindow):
         self.cube = cube
         self.wvl = wvl
 
-        default_settings = ImageCanvasSettings(zoom_speed=1.3)
-
         self.spec_window = SpectralWindow(cube, wvl)
 
-        im_canvas = ImageCanvas(
-            display_image,
-            settings=default_settings,
-            connected_spectral_canvas=self.spec_window.spec_canvas,
-            parent=self,
-        )
+        if display_image.ndim == 2:
+            default_settings = ImageCanvasSettings(zoom_speed=1.3)
+            im_canvas = ImageCanvas(
+                display_image,
+                settings=default_settings,
+                connected_spectral_canvas=self.spec_window.spec_canvas,
+                parent=self,
+            )
+        elif display_image.ndim == 3:
+            default_settings = RGBCanvasSettings(zoom_speed=1.3)
+            if display_image.shape[2] != 3:
+                raise ValueError("Display image has an invalid 3rd dimension.")
+            im_canvas = RGBCanvas(
+                display_image,
+                settings=default_settings,
+                connected_spectral_canvas=self.spec_window.spec_canvas,
+                parent=self,
+            )
+
+        else:
+            raise ValueError(
+                f"Invalid display image ({display_image.ndim} dimensions)."
+            )
 
         im_canvas.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         im_canvas.setFocus()
@@ -93,6 +109,25 @@ class MainWindow(QMainWindow):
 def open_specview(
     cube: np.ndarray, wvl: np.ndarray, display_image: np.ndarray
 ):
+    """
+    Opens a SpecView GUI for viewing spectral data.
+
+    Parameters
+    ----------
+    cube: np.ndarray
+        3D Spectral image cube.
+    wvl: np.ndarray
+        Wavelength array corresponding to the cube.
+    display_image: np.ndarray
+        2D array that will be shown as the front image of the spectral cube.
+
+    GUI Controls
+    ------------
+    - Image zoom // scroll wheel
+    - Image panning // middle mouse button
+    - Spectrum selection // left click
+    - Toggle browse mode // press c
+    """
     app = QApplication(sys.argv)
     w = MainWindow(cube, wvl, display_image)
     w.show()

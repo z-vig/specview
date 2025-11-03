@@ -82,10 +82,25 @@ class CrosshairData:
 
 
 @dataclass
+class LassoData:
+    is_active: bool = False
+    pixel_coords: np.ndarray = field(default_factory=lambda: np.empty(0))
+
+    def set_pixel_coords(self, display_image: np.ndarray):
+        if display_image.ndim > 2:
+            h, w, _ = display_image.shape
+        else:
+            h, w = display_image.shape
+        y, x = np.mgrid[0:h, 0:w]
+        self.pixel_coords = np.column_stack((x.ravel(), y.ravel()))
+
+
+@dataclass
 class ImageState:
     img_offsets: SquareOffset = field(default_factory=SquareOffset)
     panning: PanningData = field(default_factory=PanningData)
     crosshair: CrosshairData = field(default_factory=CrosshairData)
+    lasso: LassoData = field(default_factory=LassoData)
     spectral_viewer_open: bool = False
 
 
@@ -112,8 +127,16 @@ class PlottedSingleSpectrum(PlottedSpectrum):
 @dataclass
 class PlottedMeanSpectrum(PlottedSpectrum):
     data_err: np.ndarray
-    pixel_coords: np.ndarray
+    errorbar_caps: tuple[Line2D, Line2D]
+    errorbar_lines: Line2D
+    pixel_coords: list[PixelCoordinate]
     total: int
+
+    def coords_as_array(self):
+        coord_array = np.empty((self.total, 2))
+        for n, crd in enumerate(self.pixel_coords):
+            coord_array[n, :] = crd.as_tuple()
+        return coord_array
 
 
 @dataclass

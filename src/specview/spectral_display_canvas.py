@@ -58,18 +58,58 @@ class SpectralCanvas(FigureCanvasQTAgg):
         self.state.spectral_catalog.append(spectrum)
         self.state.current_spectrum = spectrum
 
+        self.spec_axis.relim()
+        self.spec_axis.autoscale_view()
+        self.draw_idle()
+
+    def add_lasso(self, c_list: list[PixelCoordinate]):
+        all_spectra = np.asarray([i.pull_data(self.cube) for i in c_list])
+
+        mean_spec = np.mean(all_spectra, axis=0)
+        std_spec = np.std(all_spectra, axis=0, ddof=1)
+        line, errorbar_caps, errorbar_lines = self.spec_axis.errorbar(
+            self.wvl,
+            mean_spec,
+            yerr=std_spec,
+            color=self.cmap(self.state.nspectra / self.cmap.N),
+            marker=".",
+            linestyle="",
+            capsize=2,
+        )
+
+        spectrum = PlottedMeanSpectrum(
+            f"SPECTURM_{self.state.nspectra+1:02d}_AREA",
+            line,
+            self.wvl,
+            mean_spec,
+            std_spec,
+            errorbar_caps,
+            errorbar_lines[0],
+            c_list,
+            len(c_list),
+        )
+
+        self.state.nspectra += 1
+        self.state.spectral_catalog.append(spectrum)
+        self.state.current_spectrum = spectrum
+
         self.spec_axis.autoscale()
         self.draw_idle()
 
     def clear_spectra(self):
-        [i.plot_obj.remove() for i in self.state.spectral_catalog]
+        for i in self.state.spectral_catalog:
+            i.plot_obj.remove()
+            if isinstance(i, PlottedMeanSpectrum):
+                i.errorbar_caps[0].remove()
+                i.errorbar_caps[1].remove()
+                i.errorbar_lines.remove()
         self.state = SpectralState()
         self.draw_idle()
 
     def save_spectra(self):
         file = asksaveasfilename(
-            filetypes=[("HDF5", "*.hdf5")],
-            defaultextension="*.hdf5",
+            filetypes=[("SPEC", "*.spec")],
+            defaultextension="*.spec",
             initialdir="./",
         )
 
@@ -87,7 +127,7 @@ class SpectralCanvas(FigureCanvasQTAgg):
                 if isinstance(obj, PlottedMeanSpectrum):
                     g.create_dataset(f"{obj.name}_error", data=obj.data_err)
                     g.create_dataset(
-                        f"{obj.name}_coords", data=obj.pixel_coords
+                        f"{obj.name}_coords", data=obj.coords_as_array()
                     )
                 elif isinstance(obj, PlottedSingleSpectrum):
                     g[obj.name].attrs[
