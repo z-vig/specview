@@ -24,8 +24,6 @@ from specview.gui_state_classes import (
     PlottedMeanSpectrum,
 )
 
-# from specview.save_models import FullSpectrum, SpectrumCollection
-# from specview.utils import forward_geotransform
 from specview.spectrum_edit_window import SpectrumEditWindow
 
 
