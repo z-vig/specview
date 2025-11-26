@@ -42,6 +42,8 @@ def square_image(
             (img.shape[long_axis], padding_length),
             np.nan,
         )
+        if short_axis == 0:
+            square_padding = np.transpose(square_padding, (1, 0))
         square_img = np.concat(
             [square_padding, img, square_padding], axis=short_axis
         )

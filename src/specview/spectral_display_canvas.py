@@ -1,23 +1,32 @@
 # Standard Libraries
 from pathlib import Path as FilePath
+from typing import Any
+from tempfile import NamedTemporaryFile as tf
 
 # Dependencies
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
+from matplotlib.backend_bases import Event, PickEvent
+from matplotlib.lines import Line2D
+from matplotlib.legend import Legend
 from matplotlib import colormaps
 import PyQt6.QtWidgets as qtw
 from tkinter.filedialog import askdirectory
+import spectralio as sio
 
 # Top-Level Imports
 from specview.gui_state_classes import (
     SpectralState,
     PixelCoordinate,
+    PlottedSpectrum,
     PlottedSingleSpectrum,
     PlottedMeanSpectrum,
 )
-from specview.save_models import FullSpectrum, SpectrumCollection
-from specview.utils import forward_geotransform
+
+# from specview.save_models import FullSpectrum, SpectrumCollection
+# from specview.utils import forward_geotransform
+from specview.spectrum_edit_window import SpectrumEditWindow
 
 
 class SpectralCanvas(FigureCanvasQTAgg):
@@ -26,10 +35,12 @@ class SpectralCanvas(FigureCanvasQTAgg):
         cube: np.ndarray,
         wvl: np.ndarray,
         parent: qtw.QWidget,
+        crs: str,
         gtrans: tuple[float, float, float, float, float, float],
         colormap: str = "tab10",
     ):
-        fig, self.spec_axis = plt.subplots(1, 1)
+        fig, self.spec_axis = plt.subplots(1, 1, tight_layout=True)
+        self.legend: None | Legend = None
         self.spec_axis.margins(0, 0)
         super().__init__(fig)
 
@@ -37,9 +48,72 @@ class SpectralCanvas(FigureCanvasQTAgg):
         self.wvl = wvl
         self.state = SpectralState()
         self.parent = parent
+        self.crs = crs
         self.gtrans = gtrans
 
         self.cmap = colormaps.get_cmap(colormap)
+
+        self.mpl_connect("pick_event", self.on_pick)
+
+    def on_pick(self, event: Event) -> Any:
+        if not isinstance(event, PickEvent):
+            return
+
+        highlight_selection: None | Line2D = None
+        if isinstance(event.artist, Line2D):
+            _xdata, _ydata = event.artist.get_data()
+            (highlight_selection,) = self.spec_axis.plot(
+                _xdata, _ydata, label="_hightlight", color="r", zorder=2
+            )
+
+        editable_spectrum: None | PlottedSpectrum = None
+        for i in self.state.spectral_catalog:
+            if event.artist == i.plot_obj:
+                editable_spectrum = i
+
+        if editable_spectrum is None:
+            raise ValueError(
+                "The spectrum selected for editing does not exist."
+            )
+        self.edit_window = SpectrumEditWindow(editable_spectrum)
+        self.edit_window.show()
+
+        def delete_highlight():
+            if highlight_selection is not None:
+                highlight_selection.remove()
+            self.draw_idle()
+
+        self.edit_window.closed.connect(delete_highlight)
+
+        def modify_legend():
+            if self.legend is not None:
+                self.legend.remove()
+            handle_list = [i.plot_obj for i in self.state.spectral_catalog]
+            lbl_list = [i.name for i in self.state.spectral_catalog]
+            self.legend = self.spec_axis.legend(
+                handles=handle_list, labels=lbl_list, bbox_to_anchor=(1, 1)
+            )
+            self.draw_idle()
+
+        self.edit_window.name_changed.connect(modify_legend)
+
+        def delete_spectrum():
+            for spec in self.state.spectral_catalog:
+                if spec == editable_spectrum:
+                    spec.plot_obj.remove()
+                    if isinstance(spec, PlottedMeanSpectrum):
+                        spec.errorbar_caps[0].remove()
+                        spec.errorbar_caps[1].remove()
+                        spec.errorbar_lines.remove()
+                    self.state.spectral_catalog.remove(spec)
+                    break
+            modify_legend()
+            self.draw_idle()
+            self.edit_window.close()
+
+        self.edit_window.spectrum_deleted.connect(delete_spectrum)
+
+        self.draw_idle()
 
     def add_spectrum(self, c: PixelCoordinate):
         spectrum_data = c.pull_data(self.cube)
@@ -47,7 +121,9 @@ class SpectralCanvas(FigureCanvasQTAgg):
             self.wvl,
             spectrum_data,
             color=self.cmap(self.state.nspectra / self.cmap.N),
+            zorder=1,
         )
+        line.set_picker(True)
 
         spectrum = PlottedSingleSpectrum(
             f"SPECTRUM_{self.state.nspectra+1:02d}",
@@ -59,6 +135,16 @@ class SpectralCanvas(FigureCanvasQTAgg):
         self.state.nspectra += 1
         self.state.spectral_catalog.append(spectrum)
         self.state.current_spectrum = spectrum
+
+        if self.legend is not None:
+            self.legend.remove()
+
+        handle_list = [i.plot_obj for i in self.state.spectral_catalog]
+        lbl_list = [i.name for i in self.state.spectral_catalog]
+
+        self.legend = self.spec_axis.legend(
+            handles=handle_list, labels=lbl_list, bbox_to_anchor=(1, 1)
+        )
 
         self.spec_axis.relim()
         self.spec_axis.autoscale_view()
@@ -75,9 +161,10 @@ class SpectralCanvas(FigureCanvasQTAgg):
             yerr=std_spec,
             color=self.cmap(self.state.nspectra / self.cmap.N),
             marker=".",
-            linestyle="",
             capsize=2,
+            zorder=1,
         )
+        line.set_picker(True)
 
         spectrum = PlottedMeanSpectrum(
             f"SPECTURM_{self.state.nspectra+1:02d}_AREA",
@@ -95,6 +182,16 @@ class SpectralCanvas(FigureCanvasQTAgg):
         self.state.spectral_catalog.append(spectrum)
         self.state.current_spectrum = spectrum
 
+        if self.legend is not None:
+            self.legend.remove()
+
+        handle_list = [i.plot_obj for i in self.state.spectral_catalog]
+        lbl_list = [i.name for i in self.state.spectral_catalog]
+
+        self.legend = self.spec_axis.legend(
+            handles=handle_list, labels=lbl_list, bbox_to_anchor=(1, 1)
+        )
+
         self.spec_axis.autoscale()
         self.draw_idle()
 
@@ -110,48 +207,37 @@ class SpectralCanvas(FigureCanvasQTAgg):
 
     def save_spectra(self):
         save_dir = askdirectory(initialdir="./")
-
         for obj in self.state.spectral_catalog:
             file = FilePath(save_dir, obj.name).with_suffix(".spec")
             if isinstance(obj, PlottedSingleSpectrum):
-                long, lat = forward_geotransform(
-                    obj.pixel_coord.x, obj.pixel_coord.y, self.gtrans
+                wvlmodel = sio.WvlModel.fromarray(obj.wvl, "nm")
+                tmp = tf(delete=False, suffix=".geodata")
+                sio.write_geodata(self.crs, self.gtrans, tmp.name)
+                sio.write_spec1D(
+                    obj.data.tolist(),
+                    wvlmodel,
+                    obj.name,
+                    file,
+                    location=obj.pixel_coord.as_tuple(),
+                    location_type="pixel",
+                    geodata_fp=tmp.name,
                 )
-                spec_model = FullSpectrum(
-                    wavelength=obj.wvl.tolist(),
-                    spectrum=obj.data.tolist(),
-                    pixel_row=int(obj.pixel_coord.y),
-                    pixel_col=int(obj.pixel_coord.x),
-                    latitude=lat,
-                    longitude=long,
-                )
+                tmp.close()
             elif isinstance(obj, PlottedMeanSpectrum):
                 crd_arr = obj.coords_as_array().astype(int)
-                collection_list = []
-                for n in range(crd_arr.shape[0]):
-                    long, lat = forward_geotransform(
-                        crd_arr[n, 0], crd_arr[n, 1], self.gtrans
-                    )
-                    print(crd_arr[n, :])
-                    single_spec = FullSpectrum(
-                        wavelength=obj.wvl.tolist(),
-                        spectrum=self.cube[
-                            crd_arr[n, 1], crd_arr[n, 0], :
-                        ].tolist(),
-                        pixel_row=crd_arr[n, 1],
-                        pixel_col=crd_arr[n, 0],
-                        latitude=lat,
-                        longitude=long,
-                    )
-                    collection_list.append(single_spec)
-                spec_model = SpectrumCollection[FullSpectrum](
-                    wavelength=obj.wvl.tolist(),
-                    mean=obj.data.tolist(),
-                    error=obj.data_err.tolist(),
-                    component_list=collection_list,
+                crd_list = [
+                    tuple(crd_arr[n, :]) for n in range(crd_arr.shape[0])
+                ]
+                wvlmodel = sio.WvlModel.fromarray(self.wvl, "nm")
+                sio.write_group(
+                    self.cube[crd_arr[:, 1], crd_arr[:, 0], :],
+                    crd_list,
+                    wvlmodel,
+                    name=obj.name,
+                    fp=file,
                 )
             else:
                 raise ValueError("Obj is not of the correct type")
 
-            with open(file, "w") as f:
-                f.write(spec_model.model_dump_json(indent=2))
+            # with open(file, "w") as f:
+            #     f.write(spec_model.model_dump_json(indent=2))

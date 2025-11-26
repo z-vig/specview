@@ -5,14 +5,17 @@ from typing import Optional
 # Dependencies
 import numpy as np
 from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import (
     QWidget,
     QMainWindow,
-    QHBoxLayout,
     QApplication,
-    QPushButton,
     QVBoxLayout,
+    QToolBar,
+    QStatusBar,
 )
+from rasterio.crs import CRS  # type: ignore
+import spectralio as sio
 
 # Top-Level Imports
 from specview.image_display_canvas import ImageCanvas, ImageCanvasSettings
@@ -20,11 +23,12 @@ from specview.rgb_display_canvas import RGBCanvas, RGBCanvasSettings
 from specview.spectral_display_canvas import SpectralCanvas
 
 
-class SpectralWindow(QWidget):
+class SpectralWindow(QMainWindow):
     def __init__(
         self,
         cube: np.ndarray,
         wvl: np.ndarray,
+        crs: str,
         geotrans: tuple[float, float, float, float, float, float],
         *args,
         **kwargs,
@@ -32,24 +36,32 @@ class SpectralWindow(QWidget):
         super().__init__(*args, **kwargs)
 
         self.spec_canvas = SpectralCanvas(
-            cube, wvl, parent=self, gtrans=geotrans
+            cube, wvl, parent=self, crs=crs, gtrans=geotrans
         )
-
-        button_layout = QHBoxLayout()
-        btn = QPushButton("Clear Spectra")
-        btn.pressed.connect(self.spec_canvas.clear_spectra)
-        button_layout.addWidget(btn)
-
-        btn = QPushButton("Save Spectra")
-        btn.pressed.connect(self.spec_canvas.save_spectra)
-        button_layout.addWidget(btn)
 
         layout = QVBoxLayout()
         layout.addWidget(self.spec_canvas)
-        layout.addLayout(button_layout)
 
-        self.setLayout(layout)
+        toolbar = QToolBar("Main Toolbar")
+
+        self.addToolBar(toolbar)
+        widget = QWidget()
+        widget.setLayout(layout)
+
+        clear_action = QAction("Clear", self)
+        clear_action.setStatusTip("Clear all currently viewed spectra.")
+        clear_action.triggered.connect(self.spec_canvas.clear_spectra)
+        toolbar.addAction(clear_action)
+
+        save_action = QAction("Save", self)
+        save_action.setStatusTip("Save the currently viewed spectra.")
+        save_action.triggered.connect(self.spec_canvas.save_spectra)
+        toolbar.addAction(save_action)
+
+        self.setStatusBar(QStatusBar(self))
+
         self.setWindowTitle("Spectral Window")
+        self.setCentralWidget(widget)
 
 
 class MainWindow(QMainWindow):
@@ -58,6 +70,7 @@ class MainWindow(QMainWindow):
         cube: np.ndarray,
         wvl: np.ndarray,
         display_image: np.ndarray,
+        crs: str,
         geotrans: tuple[float, float, float, float, float, float],
         *args,
         **kwargs,
@@ -67,7 +80,7 @@ class MainWindow(QMainWindow):
         self.cube = cube
         self.wvl = wvl
 
-        self.spec_window = SpectralWindow(cube, wvl, geotrans)
+        self.spec_window = SpectralWindow(cube, wvl, crs, geotrans)
 
         if display_image.ndim == 2:
             default_settings = ImageCanvasSettings(zoom_speed=1.3)
@@ -115,9 +128,7 @@ def open_specview(
     cube: np.ndarray,
     wvl: np.ndarray,
     display_image: np.ndarray,
-    geotransform: Optional[
-        tuple[float, float, float, float, float, float]
-    ] = None,
+    geodata: Optional[str],
 ):
     """
     Opens a SpecView GUI for viewing spectral data.
@@ -138,26 +149,16 @@ def open_specview(
     - Spectrum selection // left click
     - Toggle browse mode // press c
     """
-    if geotransform is None:
-        geotransform = (0, 1, 0, 0, 0, 1)
+    if geodata is None:
+        crs = CRS.from_authority("ESRI", "104903").to_wkt()
+        assert isinstance(crs, str)
+        geotransform = (0.0, 1.0, 0.0, 0.0, 0.0, 1.0)
+    else:
+        geodat = sio.read_geodata(geodata_fp=geodata)
+        crs = geodat.crs
+        geotransform = geodat.geotransform.togdal()
 
     app = QApplication(sys.argv)
-    w = MainWindow(cube, wvl, display_image, geotransform)
+    w = MainWindow(cube, wvl, display_image, crs, geotransform)
     w.show()
     app.exec()
-
-
-def main():
-    import h5py as h5  # type: ignore
-    from pathlib import Path
-
-    print("Launching Specview...")
-
-    root = Path("D:/moon_data/m3/Gruithuisen_Region/M3G20090208T175211/")
-    p = Path(root, "pipeline_cache_175211.hdf5")
-    with h5.File(p) as f:
-        g = f["thermal_correction"]
-        cube: np.ndarray = g["data"][...]  # type: ignore
-        wvl: np.ndarray = g.attrs["wavelengths"][...]  # type: ignore
-
-    open_specview(cube, wvl, cube[:, :, 10])

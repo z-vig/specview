@@ -9,6 +9,7 @@ T = TypeVar("T", bound="BaseSpectrum")
 
 
 class BaseSpectrum(BaseModel):
+    name: str
     pixel_row: int
     pixel_col: int
     latitude: float
