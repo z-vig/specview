@@ -12,7 +12,7 @@ from matplotlib.lines import Line2D
 from matplotlib.legend import Legend
 from matplotlib import colormaps
 import PyQt6.QtWidgets as qtw
-from tkinter.filedialog import askdirectory
+from tkinter.filedialog import askdirectory, askopenfilename
 import spectralio as sio
 
 # Top-Level Imports
@@ -201,6 +201,10 @@ class SpectralCanvas(FigureCanvasQTAgg):
                 i.errorbar_caps[1].remove()
                 i.errorbar_lines.remove()
         self.state = SpectralState()
+        (null_line,) = self.spec_axis.plot([], color=(0, 0, 0, 0))
+        self.legend = self.spec_axis.legend(
+            handles=[null_line], labels=[""], bbox_to_anchor=(1, 1)
+        )
         self.draw_idle()
 
     def save_spectra(self):
@@ -239,3 +243,16 @@ class SpectralCanvas(FigureCanvasQTAgg):
 
             # with open(file, "w") as f:
             #     f.write(spec_model.model_dump_json(indent=2))
+
+    def set_cube(self) -> None:
+        new_cube = askopenfilename(
+            initialdir="./",
+            filetypes=[("geospcub", ".geospcub")],
+        )
+        if new_cube == "":
+            return
+        cube_data = sio.read_spec3D(new_cube, kind="geospcub")
+        self.cube = cube_data.load_raster()
+        self.wvl = cube_data.wavelength.asarray()
+        self.crs = cube_data.geodata.crs
+        self.gtrans = cube_data.geodata.geotransform.togdal()

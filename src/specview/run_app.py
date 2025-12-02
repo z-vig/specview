@@ -109,6 +109,25 @@ class MainWindow(QMainWindow):
         im_canvas.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         im_canvas.setFocus()
 
+        toolbar = QToolBar("Main Toolbar")
+        self.addToolBar(toolbar)
+
+        open_cube = QAction("Open Spectral Cube", self)
+        open_cube.setStatusTip("Open a new spectral cube.")
+        open_cube.triggered.connect(self.spec_window.spec_canvas.set_cube)
+
+        open_display = QAction("Open Display", self)
+        open_display.setStatusTip("Open new display data.")
+        # open_display.triggered.connect()
+
+        menu = self.menuBar()
+
+        if menu is not None:
+            open_menu = menu.addMenu("Open")
+            if open_menu is not None:
+                open_menu.addAction(open_cube)
+                open_menu.addAction(open_display)
+
         layout = QVBoxLayout()
         layout.addWidget(im_canvas)
 
