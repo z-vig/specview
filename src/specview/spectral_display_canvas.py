@@ -241,9 +241,6 @@ class SpectralCanvas(FigureCanvasQTAgg):
             else:
                 raise ValueError("Obj is not of the correct type")
 
-            # with open(file, "w") as f:
-            #     f.write(spec_model.model_dump_json(indent=2))
-
     def set_cube(self) -> None:
         new_cube = askopenfilename(
             initialdir="./",
