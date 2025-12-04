@@ -1,0 +1,140 @@
+from PyQt6.QtWidgets import QWidget, QVBoxLayout
+from PyQt6.QtCore import pyqtSignal
+import pyqtgraph as pg  # type: ignore
+import numpy as np
+from functools import partial
+
+from .spectrum_edit_window import SpectrumEditWindow
+
+
+class SpectralDisplayWidget(QWidget):
+    data_added = pyqtSignal(pg.PlotDataItem, pg.ErrorBarItem)
+    data_updated = pyqtSignal(pg.PlotDataItem, pg.ErrorBarItem, str, str)
+    data_removed = pyqtSignal(str)
+    plot_reset = pyqtSignal()
+
+    def __init__(self) -> None:
+        super().__init__()
+
+        self.spec_plot = pg.PlotWidget()
+        self.spec_legend = self.spec_plot.addLegend()
+
+        self.wvl = np.empty((0, 0, 0), dtype=np.float32)
+        self.cube = np.empty((0, 0, 0), dtype=np.float32)
+        self._count = 0
+        self._editing = False
+
+        layout = QVBoxLayout()
+        layout.addWidget(self.spec_plot)
+        self.setLayout(layout)
+
+        self.plot_reset.connect(self.handle_reset)
+
+    def set_cube(self, wvl: np.ndarray, data: np.ndarray) -> None:
+        if data.ndim != 3:
+            return
+        self.wvl = wvl
+        self.cube = data.astype(np.float32)
+
+    def add_spectrum(self, coord: tuple[int, int]) -> str:
+        self._count += 1
+        spectrum = self.cube[*coord, :]
+        spec_item = pg.PlotDataItem(
+            self.wvl,
+            spectrum,
+            clickable=True,
+            name=f"SPECTRUM_{self._count:02d}",
+        )
+        errbars = pg.ErrorBarItem(x=self.wvl, y=spectrum, height=0)
+        errbars.setVisible(False)
+
+        self.spec_plot.addItem(spec_item)
+        self.data_added.emit(spec_item, errbars)
+
+        spec_item.sigClicked.connect(
+            partial(self.edit_spectrum, spec_item, errbars)
+        )
+
+        name = spec_item.name()
+        if name is not None:
+            return name
+        else:
+            raise ValueError(f"Spectrum name ({name}) is invalid")
+
+    def add_group(self, coords: np.ndarray) -> str:
+        self._count += 1
+        if coords.ndim != 2:
+            raise ValueError("Group Coordinate Array is the wrong size")
+        if coords.shape[1] != 2:
+            raise ValueError("Group Coordinate Array is the wrong size")
+
+        spec_array = self.cube[coords[:, 1], coords[:, 0], :]
+        mean_spectrum = np.mean(spec_array, axis=0)
+        err_spectrum = np.std(spec_array, axis=0, ddof=1)
+        spec_item = pg.PlotDataItem(
+            self.wvl,
+            mean_spectrum,
+            clickable=True,
+            name=f"SPECTRUM_{self._count:02d}",
+        )
+        errbars = pg.ErrorBarItem(
+            x=self.wvl, y=mean_spectrum, height=2 * err_spectrum, beam=10
+        )
+
+        self.spec_plot.addItem(spec_item)
+        self.spec_plot.addItem(errbars)
+        self.data_added.emit(spec_item, errbars)
+
+        spec_item.sigClicked.connect(
+            partial(self.edit_spectrum, spec_item, errbars)
+        )
+
+        name = spec_item.name()
+        if name is not None:
+            return name
+        else:
+            raise ValueError("Group Name is None")
+
+    def edit_spectrum(self, plot: pg.PlotDataItem, err: pg.ErrorBarItem):
+        if self._editing:
+            print(
+                "Close the current spectrum edit window to edit another"
+                " spectrum."
+            )
+            return
+        self._editing = True
+        current_color = plot.opts["pen"]
+        _pen = pg.mkPen({"color": "red"})
+        plot.setPen(_pen)
+
+        self.edit_win = SpectrumEditWindow(plot)
+        self.edit_win.show()
+
+        def rename_spectrum(old_name: str, new_name: str):
+            self.spec_legend.removeItem(plot)
+            self.spec_legend.addItem(plot, plot.name())
+            self.data_updated.emit(plot, err, old_name, new_name)
+
+        self.edit_win.name_changed.connect(rename_spectrum)
+
+        def delete_spectrum():
+            # self.state.current_spectra.remove(plot_curve)
+            self.spec_plot.removeItem(plot)
+            if err is not None:
+                self.spec_plot.removeItem(err)
+            self.edit_win.close()
+            self._editing = False
+            self.data_removed.emit(plot.name())
+
+        self.edit_win.spectrum_deleted.connect(delete_spectrum)
+
+        def close_window():
+            self.edit_win.close()
+            _pen = pg.mkPen(current_color)
+            plot.setPen(_pen)
+            self._editing = False
+
+        self.edit_win.closed.connect(close_window)
+
+    def handle_reset(self):
+        self._count = 0
