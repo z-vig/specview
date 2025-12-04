@@ -209,4 +209,5 @@ __marimo__/
 test_specviewer.py
 test_saves
 test_saves_old
+sample_data
 

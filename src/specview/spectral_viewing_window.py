@@ -13,12 +13,14 @@ from .image_display_widget import ImagePickerWidget
 from .spectral_display_widget import SpectralDisplayWidget
 
 
-class MainWindow(BaseWindow):
+class SpecViewWindow(BaseWindow):
     def __init__(
-        self, wvl: np.ndarray, image_data: Optional[np.ndarray] = None
+        self,
+        wvl: Optional[np.ndarray],
+        image_data: Optional[np.ndarray] = None,
+        cube_data: Optional[np.ndarray] = None,
     ) -> None:
         super().__init__()
-        self.wvl = wvl
         self.polygon_cache: dict[str, qtw.QGraphicsPolygonItem | None] = {}
 
         dock_area = DockArea()
@@ -114,9 +116,11 @@ class MainWindow(BaseWindow):
         if image_data is not None:
             self.set_window_size(image_data)
             self.set_image(image_data)
-            self.set_cube(self.wvl, image_data)
         else:
             self.resize(600, 600)
+
+        if cube_data is not None and wvl is not None:
+            self.set_cube(wvl, cube_data)
 
     def open_image(self, fp: str | Path, bbl: list[bool] | None = None):
         with rio.open(fp, "r") as f:
