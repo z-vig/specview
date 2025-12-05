@@ -1,5 +1,5 @@
 [project]
-name = "cubeview"
+name = "pycubeview"
 version = "0.1.0"
 description = "A Hyperspectral Image Viewer for Python"
 authors = [
