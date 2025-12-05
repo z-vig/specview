@@ -1,24 +1,30 @@
+# Built-Ins
 from typing import Optional
+from tkinter.filedialog import askopenfilename
+
+# PyQt6 Imports
 from PyQt6 import QtWidgets as qtw
 from PyQt6 import QtGui
 from PyQt6 import QtCore
+
+# Dependencies
 from pyqtgraph.dockarea import Dock, DockArea  # type: ignore
-import rasterio as rio  # type: ignore
-from pathlib import Path
 import numpy as np
 import pyqtgraph as pg  # type: ignore
 
+# Local Imports
 from .base_window import BaseWindow
 from .image_display_widget import ImagePickerWidget
 from .spectral_display_widget import SpectralDisplayWidget
+from .file_opening_utils import open_cube, open_wvl
 
 
 class SpecViewWindow(BaseWindow):
     def __init__(
         self,
-        wvl: Optional[np.ndarray],
-        image_data: Optional[np.ndarray] = None,
-        cube_data: Optional[np.ndarray] = None,
+        wvl: Optional[np.ndarray | str] = None,
+        image_data: Optional[np.ndarray | str] = None,
+        cube_data: Optional[np.ndarray | str] = None,
     ) -> None:
         super().__init__()
         self.polygon_cache: dict[str, qtw.QGraphicsPolygonItem | None] = {}
@@ -27,7 +33,8 @@ class SpecViewWindow(BaseWindow):
         self.setCentralWidget(dock_area)
 
         # ---- Connecting menu actions to slots ----
-        self.open_display.triggered.connect(self.open_image)
+        self.open_display.triggered.connect(self.load_image)
+        self.open_cube.triggered.connect(self.load_cube)
         self.clear_spectra.triggered.connect(self.empty_cache)
 
         # ---- Image Dock ----
@@ -113,24 +120,54 @@ class SpecViewWindow(BaseWindow):
 
         self.img_picker.mouse_moved.connect(cursor_message)
 
-        if image_data is not None:
+        if isinstance(image_data, np.ndarray):
             self.set_window_size(image_data)
             self.set_image(image_data)
         else:
             self.resize(600, 600)
 
-        if cube_data is not None and wvl is not None:
+        if isinstance(wvl, np.ndarray) and isinstance(cube_data, np.ndarray):
             self.set_cube(wvl, cube_data)
 
-    def open_image(self, fp: str | Path, bbl: list[bool] | None = None):
-        with rio.open(fp, "r") as f:
-            arr: np.ndarray = f.read()
-        arr[arr == -999] = np.nan
-        if arr.ndim == 3:
-            arr = np.transpose(arr, (1, 2, 0))
-            if bbl is not None:
-                arr = arr[:, :, np.asarray(bbl, dtype=bool)]
+        if isinstance(image_data, str):
+            arr = open_cube(image_data)
+            self.set_image(arr)
+
+        if isinstance(wvl, str) and isinstance(cube_data, str):
+            arr = open_cube(cube_data)
+            wvl_arr = open_wvl(wvl)
+            self.set_cube(wvl_arr, arr)
+
+    def load_image(self) -> None:
+        fp = askopenfilename(
+            title="Select Image Data",
+            filetypes=[
+                ("Spectral Cube Files", [".spcub", ".geospcub"]),
+                ("Rasterio-Compatible Files", [".bsq", ".img", ".tif"]),
+            ],
+        )
+        arr = open_cube(fp)
         self.set_image(arr)
+
+    def load_cube(self) -> None:
+        cube_fp = askopenfilename(
+            title="Select Cube Data",
+            filetypes=[
+                ("Spectral Cube Files", [".spcub", ".geospcub"]),
+                ("Rasterio-Compatible Files", [".bsq", ".img", ".tif"]),
+            ],
+        )
+        wvl_fp = askopenfilename(
+            title="Select Wavelength (or other context) Data",
+            filetypes=[
+                ("Wavelength File", [".wvl"]),
+                ("ENVI Header File", [".hdr"]),
+                ("Text-Based Files", [".txt", ".csv"]),
+            ],
+        )
+        arr = open_cube(cube_fp)
+        wvl = open_wvl(wvl_fp)
+        self.set_cube(wvl, arr)
 
     def set_image(self, data: np.ndarray) -> None:
         self.img_picker.set_image(data)

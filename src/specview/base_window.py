@@ -1,5 +1,6 @@
 # Built-ins
 from dataclasses import dataclass
+from importlib.metadata import version
 
 # Dependencies
 import pyqtgraph as pg  # type: ignore
@@ -54,7 +55,7 @@ class BaseWindow(QMainWindow):
         self.status_bar = QStatusBar(self)
         self.setStatusBar(self.status_bar)
 
-        self.setWindowTitle("SpecView v0.1.0")
+        self.setWindowTitle(f"SpecView v{version("specview")}")
 
     def set_window_size(self, image: np.ndarray) -> None:
         if image.shape[0] > image.shape[1]:
