@@ -1,2 +1,64 @@
-# specview
-A Hyperspectral Imager Viewer for Python
+# `cubeview` 🔎
+
+A Flexible and Interactive Spectral (and more!) Image Viewer for Python
+
+---
+
+## Motivation ✨
+
+Whether it's an imaging spectrometer or an InSAR time-series, many remotely
+sensed scientific data comes in the form of a cube, which is here defined as
+any dataset that has spatial information in two dimensions and measured values
+in a third dimension. Below are listed some examples of scientific data cubes:
+
+- Hyperspectral Imagery
+- Multispectral Imagery
+- InSAR Time Series
+- Cloud Cover Evolution Map
+- Spectral Maps from lab spectrometers
+- And Many More!
+
+
+## Installation ⬇️
+
+`cubeview` can be directly install from the Python Package Index using `pip`.
+
+```bash
+pip install cubeview
+```
+
+## Usage ⚙️
+
+The basic `cubeview` GUI can be opened directly from the command line by ensuring you are in a python environment that has `cubeview` installed and running
+
+```bash
+cubeview.exe
+```
+
+The `cubeview` GUI can also be started from a python script.
+
+```python
+from cubeview import open_cubeview
+open_cubeview(image_data, cube_data, wvl_data)
+```
+Where the data can optionally provided as either a Numpy-Array or a filepath to one of the supported file types.
+
+## Supported File Types 📂
+### Image and Cube Data
+#### `spectralio` files
+
+  - .geospcub
+  - .spcub
+
+#### `rasterio`-compatible files
+  - .img
+  - .bsq
+  - .tif
+
+### Wavelength Data
+  - .wvl
+  - .hdr
+  - .txt
+  - .csv
+
+

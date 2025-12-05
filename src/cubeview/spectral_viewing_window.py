@@ -19,7 +19,7 @@ from .spectral_display_widget import SpectralDisplayWidget
 from .file_opening_utils import open_cube, open_wvl
 
 
-class SpecViewWindow(BaseWindow):
+class CubeViewWindow(BaseWindow):
     def __init__(
         self,
         wvl: Optional[np.ndarray | str] = None,

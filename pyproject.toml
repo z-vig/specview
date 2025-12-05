@@ -1,5 +1,5 @@
 [project]
-name = "specview"
+name = "cubeview"
 version = "0.1.0"
 description = "A Hyperspectral Image Viewer for Python"
 authors = [
@@ -21,7 +21,7 @@ dependencies = [
 ]
 
 [project.scripts]
-hypview = "specview.cli:main"
+cubeview = "cubeview.cli:main"
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
